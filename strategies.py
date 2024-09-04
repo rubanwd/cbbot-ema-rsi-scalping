@@ -39,8 +39,8 @@ class Strategies:
         print(f"RSI: {rsi:.2f}")
 
         if ema_9 > ema_21 and rsi > 50:
-            return 'long'
-        elif ema_9 < ema_21 and rsi < 50:
             return 'short'
+        elif ema_9 < ema_21 and rsi < 50:
+            return 'long'
         else:
             return None
