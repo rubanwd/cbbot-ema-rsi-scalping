@@ -35,8 +35,8 @@ class Strategies:
         rsi = df['RSI'].iloc[-1]
 
         if ema_9 > ema_21 and rsi > 50 and rsi < 70:
-            return 'long'
-        elif ema_9 < ema_21 and rsi < 50 and rsi > 30:
             return 'short'
+        elif ema_9 < ema_21 and rsi < 50 and rsi > 30:
+            return 'long'
         else:
             return None
