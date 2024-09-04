@@ -4,14 +4,13 @@ import schedule
 import time
 import logging
 from data_fetcher import DataFetcher
-from indicators import Indicators  # Add this import
+from indicators import Indicators
 from strategies import Strategies
 from risk_management import RiskManagement
 from dotenv import load_dotenv
 import os
 import pandas as pd
 from bybit_demo_session import BybitDemoSession
-from indicators import Indicators
 
 class TradingBot:
     def __init__(self):
@@ -35,10 +34,9 @@ class TradingBot:
         self.quantity = float(os.getenv("TRADE_QUANTITY", 0.03))
 
         # Load trading parameters
-        self.interval = os.getenv("TRADING_INTERVAL", '1')  # Changed to 1-minute interval for quicker trades
-        self.limit = int(os.getenv("TRADING_LIMIT", 100))  # Number of candles for analysis
-
-        self.leverage = int(os.getenv("LEVERAGE", 10))  # Default leverage is set to 10 if not provided
+        self.interval = os.getenv("TRADING_INTERVAL", '1')
+        self.limit = int(os.getenv("TRADING_LIMIT", 100))
+        self.leverage = int(os.getenv("LEVERAGE", 10))
 
         # Load strategy switches
         self.enable_ema_rsi_strategy = os.getenv("ENABLE_EMA_RSI_STRATEGY", "True").lower() == "true"
@@ -47,93 +45,82 @@ class TradingBot:
         logging.basicConfig(filename='trading_bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         
     def job(self):
-        
-        # Check the last closed position
-        # last_closed_position = self.data_fetcher.get_last_closed_position(self.symbol)
+        last_closed_position = self.data_fetcher.get_last_closed_position(self.symbol)
+        if last_closed_position:
+            last_closed_time = int(last_closed_position['updatedTime']) / 1000
+            current_time = time.time()
+            time_since_last_close = current_time - last_closed_time
+            print(f"Time since last closed position: {int(time_since_last_close)} seconds")
+            if time_since_last_close < 120:
+                print("The last closed position was less than 3 minutes ago. A new order will not be placed.")
+                return
 
-        # if last_closed_position:
-        #     last_closed_time = int(last_closed_position['updatedTime']) / 1000
-        #     current_time = time.time()
-        #     time_since_last_close = current_time - last_closed_time
-        #     print(f"Time since last closed position: {int(time_since_last_close)} seconds")
-
-        #     if time_since_last_close < 180:  # 180 seconds = 3 minutes
-        #         print("The last closed position was less than 3 minutes ago. A new order will not be placed.")
-        #         return
-        #     else:
-        #         print("More than 3 minutes have passed since the last closed position.")
-
-        # Retrieve historical data
         get_historical_data = self.data_fetcher.get_historical_data(self.symbol, self.interval, self.limit)
         if get_historical_data is None:
             print("Failed to retrieve historical data.")
             return
-        
-
-        print("--------------------------------------")
 
         df = self.strategy.prepare_dataframe(get_historical_data)
 
-        # Calculate EMA 9 and EMA 21
+        # Calculate indicators
         df['EMA_9'] = self.indicators.calculate_ema(df, 9)
         df['EMA_21'] = self.indicators.calculate_ema(df, 21)
-
-        # Calculate RSI (14-period)
         df['RSI'] = self.indicators.calculate_rsi(df, 14)
+        df['MACD'], df['MACD_signal'] = self.indicators.calculate_macd(df)
+        df['Stochastic'], df['Stochastic_signal'] = self.indicators.calculate_stochastic(df)
+        df['Bollinger_upper'], df['Bollinger_middle'], df['Bollinger_lower'] = self.indicators.calculate_bollinger_bands(df)
 
-        # Get the latest values
+        # Get the latest indicator values
         ema_9 = df['EMA_9'].iloc[-1]
         ema_21 = df['EMA_21'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
+        macd = df['MACD'].iloc[-1]
+        macd_signal = df['MACD_signal'].iloc[-1]
+        stochastic = df['Stochastic'].iloc[-1]
+        stochastic_signal = df['Stochastic_signal'].iloc[-1]
+        bollinger_upper = df['Bollinger_upper'].iloc[-1]
+        bollinger_middle = df['Bollinger_middle'].iloc[-1]
+        bollinger_lower = df['Bollinger_lower'].iloc[-1]
 
+        # Print the indicator values
         print(f"EMA 9: {ema_9:.2f}")
         print(f"EMA 21: {ema_21:.2f}")
         print(f"RSI: {rsi:.2f}")
+        print(f"MACD: {macd:.2f}")
+        print(f"MACD Signal: {macd_signal:.2f}")
+        print(f"Stochastic: {stochastic:.2f}")
+        print(f"Stochastic Signal: {stochastic_signal:.2f}")
+        print(f"Bollinger Upper: {bollinger_upper:.2f}")
+        print(f"Bollinger Middle: {bollinger_middle:.2f}")
+        print(f"Bollinger Lower: {bollinger_lower:.2f}")
 
-        # Check for open positions
         open_positions = self.data_fetcher.get_open_positions(self.symbol)
-        if open_positions and len(open_positions) > 0:
+        if open_positions:
             print("There is already an open position. A new order will not be placed.")
             return
 
-        # Check for open limit orders and cancel if necessary
         open_orders = self.data_fetcher.get_open_orders(self.symbol)
-        if open_orders and len(open_orders) > 0:
+        if open_orders:
             print("There is an open limit order. A new order will not be placed.")
             return
-
-        df = pd.DataFrame(get_historical_data)
-        df.columns = ["timestamp", "open", "high", "low", "close", "volume", "turnover"]
-        df['close'] = df['close'].astype(float)
 
         current_price = self.data_fetcher.get_real_time_price(self.symbol)
         if current_price is None:
             print("Failed to retrieve real-time price.")
             return
 
-        print(f"current_price ----: {current_price}")
+        print(f"Current Price: {current_price:.2f}")
 
-        trend = None
-
-        # Evaluate EMA + RSI strategy if enabled
-        ema_rsi_trend = self.strategy.ema_rsi_strategy(get_historical_data)
-        if ema_rsi_trend:
-            trend = ema_rsi_trend
-            print(f"EMA + RSI Strategy Signal: {trend.upper()}")
-
+        trend = self.strategy.combine_indicators_strategy(df)
         if trend:
-            print(f"Signal for position: {trend.upper()}")
-
-            # Risk management with dynamic ATR-based calculation
-            stop_loss, take_profit = self.risk_management.calculate_risk_management(current_price, trend, df)
+            stop_loss, take_profit = self.risk_management.calculate_dynamic_risk_management(df, current_price, trend)
+            print(f"Trend: {trend.upper()}")
             print(f"Stop Loss: {stop_loss:.2f}")
             print(f"Take Profit: {take_profit:.2f}")
 
             side = 'Buy' if trend == 'long' else 'Sell'
-
             print(f"Order side: {side}")
 
-            # Place order
             order_result = self.data_fetcher.place_order(
                 symbol=self.symbol,
                 side=side,
@@ -150,20 +137,14 @@ class TradingBot:
                 print("Failed to place order.")
         else:
             print("No suitable signals for position opening.")
-        print("--------------------------------------")
 
     def run(self):
         self.job()
         schedule.every(10).seconds.do(self.job)
-        print("Trading bot launched and ready to work.")
         while True:
             schedule.run_pending()
             time.sleep(1)
 
 if __name__ == "__main__":
-    try:
-        bot = TradingBot()
-        bot.run()
-    except Exception as e:
-        print(f"Error starting trading bot: {e}")
-
+    bot = TradingBot()
+    bot.run()

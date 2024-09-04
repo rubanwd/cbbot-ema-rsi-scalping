@@ -8,35 +8,23 @@ class Strategies:
         self.indicators = Indicators()
 
     def prepare_dataframe(self, historical_data):
-        """Convert response to DataFrame and sort it by timestamp."""
         df = pd.DataFrame(historical_data)
         df.columns = ["timestamp", "open", "high", "low", "close", "volume", "turnover"]
         df['close'] = df['close'].astype(float)
-        
-        # Sort by timestamp in ascending order
         df.sort_values('timestamp', inplace=True)
-
         return df
 
-    def ema_rsi_strategy(self, historical_data):
-        # Prepare the DataFrame
-        df = self.prepare_dataframe(historical_data)
-        
-        # Calculate EMA 9 and EMA 21
-        df['EMA_9'] = self.indicators.calculate_ema(df, 9)
-        df['EMA_21'] = self.indicators.calculate_ema(df, 21)
-
-        # Calculate RSI (14-period)
-        df['RSI'] = self.indicators.calculate_rsi(df, 14)
-
-        # Get the latest values
+    def combine_indicators_strategy(self, df):
         ema_9 = df['EMA_9'].iloc[-1]
         ema_21 = df['EMA_21'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
+        macd = df['MACD'].iloc[-1]
+        macd_signal = df['MACD_signal'].iloc[-1]
+        stochastic = df['Stochastic'].iloc[-1]
+        stochastic_signal = df['Stochastic_signal'].iloc[-1]
 
-        if ema_9 > ema_21 and rsi > 50 and rsi < 70:
-            return 'short'
-        elif ema_9 < ema_21 and rsi < 50 and rsi > 30:
+        if ema_9 > ema_21 and rsi > 50 and macd > macd_signal and stochastic > stochastic_signal:
             return 'long'
-        else:
-            return None
+        elif ema_9 < ema_21 and rsi < 50 and macd < macd_signal and stochastic < stochastic_signal:
+            return 'short'
+        return None
