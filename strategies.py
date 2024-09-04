@@ -34,10 +34,6 @@ class Strategies:
         ema_21 = df['EMA_21'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
 
-        print(f"EMA 9: {ema_9:.2f}")
-        print(f"EMA 21: {ema_21:.2f}")
-        print(f"RSI: {rsi:.2f}")
-
         if ema_9 > ema_21 and rsi > 50 and rsi < 70:
             return 'long'
         elif ema_9 < ema_21 and rsi < 50 and rsi > 30:

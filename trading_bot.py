@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 import pandas as pd
 from bybit_demo_session import BybitDemoSession
+from indicators import Indicators
 
 class TradingBot:
     def __init__(self):
@@ -25,6 +26,7 @@ class TradingBot:
         self.data_fetcher = BybitDemoSession(self.api_key, self.api_secret)
 
         self.strategy = Strategies()
+        self.indicators = Indicators()
         self.risk_management = RiskManagement(
             atr_multiplier=float(os.getenv("ATR_MULTIPLIER", 1.0)),
             risk_ratio=float(os.getenv("RISK_RATIO", 1.0))
@@ -45,7 +47,48 @@ class TradingBot:
         logging.basicConfig(filename='trading_bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         
     def job(self):
+        
+        # Check the last closed position
+        # last_closed_position = self.data_fetcher.get_last_closed_position(self.symbol)
+
+        # if last_closed_position:
+        #     last_closed_time = int(last_closed_position['updatedTime']) / 1000
+        #     current_time = time.time()
+        #     time_since_last_close = current_time - last_closed_time
+        #     print(f"Time since last closed position: {int(time_since_last_close)} seconds")
+
+        #     if time_since_last_close < 180:  # 180 seconds = 3 minutes
+        #         print("The last closed position was less than 3 minutes ago. A new order will not be placed.")
+        #         return
+        #     else:
+        #         print("More than 3 minutes have passed since the last closed position.")
+
+        # Retrieve historical data
+        get_historical_data = self.data_fetcher.get_historical_data(self.symbol, self.interval, self.limit)
+        if get_historical_data is None:
+            print("Failed to retrieve historical data.")
+            return
+        
+
         print("--------------------------------------")
+
+        df = self.strategy.prepare_dataframe(get_historical_data)
+
+        # Calculate EMA 9 and EMA 21
+        df['EMA_9'] = self.indicators.calculate_ema(df, 9)
+        df['EMA_21'] = self.indicators.calculate_ema(df, 21)
+
+        # Calculate RSI (14-period)
+        df['RSI'] = self.indicators.calculate_rsi(df, 14)
+
+        # Get the latest values
+        ema_9 = df['EMA_9'].iloc[-1]
+        ema_21 = df['EMA_21'].iloc[-1]
+        rsi = df['RSI'].iloc[-1]
+
+        print(f"EMA 9: {ema_9:.2f}")
+        print(f"EMA 21: {ema_21:.2f}")
+        print(f"RSI: {rsi:.2f}")
 
         # Check for open positions
         open_positions = self.data_fetcher.get_open_positions(self.symbol)
@@ -57,27 +100,6 @@ class TradingBot:
         open_orders = self.data_fetcher.get_open_orders(self.symbol)
         if open_orders and len(open_orders) > 0:
             print("There is an open limit order. A new order will not be placed.")
-            return
-        
-        # Check the last closed position
-        last_closed_position = self.data_fetcher.get_last_closed_position(self.symbol)
-
-        if last_closed_position:
-            last_closed_time = int(last_closed_position['updatedTime']) / 1000
-            current_time = time.time()
-            time_since_last_close = current_time - last_closed_time
-            print(f"Time since last closed position: {int(time_since_last_close)} seconds")
-
-            if time_since_last_close < 180:  # 180 seconds = 3 minutes
-                print("The last closed position was less than 3 minutes ago. A new order will not be placed.")
-                return
-            else:
-                print("More than 3 minutes have passed since the last closed position.")
-
-        # Retrieve historical data
-        get_historical_data = self.data_fetcher.get_historical_data(self.symbol, self.interval, self.limit)
-        if get_historical_data is None:
-            print("Failed to retrieve historical data.")
             return
 
         df = pd.DataFrame(get_historical_data)
@@ -128,6 +150,7 @@ class TradingBot:
                 print("Failed to place order.")
         else:
             print("No suitable signals for position opening.")
+        print("--------------------------------------")
 
     def run(self):
         self.job()
