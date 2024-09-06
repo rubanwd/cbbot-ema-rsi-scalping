@@ -1,13 +1,13 @@
-
-# risk_management.py
-
-import pandas as pd  # Add this import
+import pandas as pd
+import time
 
 class RiskManagement:
-    def __init__(self, atr_period=14, atr_multiplier=1.5, risk_ratio=1.5):
+    def __init__(self, atr_period=14, atr_multiplier=1.5, risk_ratio=1.5, position_timeout=300, data_fetcher=None):
         self.atr_period = atr_period
         self.atr_multiplier = atr_multiplier
         self.risk_ratio = risk_ratio
+        self.position_timeout = position_timeout  # In seconds (default: 5 minutes)
+        self.data_fetcher = data_fetcher  # Store the data_fetcher object
 
     def calculate_atr(self, df):
         high = df['high'].astype(float)
@@ -33,3 +33,23 @@ class RiskManagement:
 
         return stop_loss, take_profit
 
+    def monitor_position_timeout(self, order_result, symbol):
+        """
+        Monitors the position and closes it if the timeout has been reached.
+        :param order_result: The result of the order placement.
+        :param symbol: The symbol for the trade (e.g., 'BTCUSDT').
+        """
+        order_id = order_result.get('orderId')
+
+        if not order_id:
+            print("No valid order ID found, skipping timeout monitoring.")
+            return
+
+        start_time = time.time()
+        while True:
+            current_time = time.time()
+            if current_time - start_time > self.position_timeout:
+                print(f"Position open for more than {self.position_timeout // 60} minutes, closing it.")
+                self.data_fetcher.cancel_order(order_id, symbol)  # Use the data_fetcher object to cancel the order
+                break
+            time.sleep(10)  # Check every 10 seconds
